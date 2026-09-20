@@ -245,6 +245,7 @@ def resolve_duplicate(data, record_id):
         st.session_state["validation_data"] = data
         st.success(f"{record_id} kept. Retry is required before approval.")
         st.rerun()
+        
     except requests.RequestException as error:
         st.error(f"Duplicate resolution failed: {error}")
 
@@ -260,7 +261,13 @@ def retry_record(data, record, edited_values=None):
         retry_response_data = response.json()
         record_id = record.get("record_id")
         set_record(data, record_id, updated_record)
-        st.session_state.setdefault("retry_completed_ids", set()).add(record_id)
+        if (
+            updated_record.get("confidence_score") == 100
+            and updated_record.get("confidence_status") == "SYSTEM_APPROVED"
+        ):
+            st.session_state.setdefault("retry_completed_ids", set()).add(record_id)
+        else:
+            st.session_state.setdefault("retry_completed_ids", set()).discard(record_id)
         st.session_state["last_retry_result"] = {
             "record_id": record_id,
             "score": updated_record.get("confidence_score", 0),
@@ -269,15 +276,25 @@ def retry_record(data, record, edited_values=None):
         }
         st.session_state["validation_data"] = data
         st.rerun()
+    except requests.HTTPError as error:
+        detail = error.response.text if error.response is not None else str(error)
+        st.error(f"Retry could not be completed: {detail}")
     except requests.RequestException as error:
-        st.error(f"Retry failed: {error}")
+        st.error(f"Retry connection failed: {error}")
 
 
 def render_duplicate_review(data: Dict[str, Any]):
     groups = {}
     for record in all_records(data):
         group_id = record.get("duplicate_group_id")
-        if group_id and record.get("duplicate_status") != "REMOVED":
+        if (
+            group_id
+            and record.get("duplicate_status") != "REMOVED"
+            and not (
+                record.get("duplicate_status") == "KEPT"
+                and record.get("confidence_status") == "SYSTEM_APPROVED"
+            )
+        ):
             groups.setdefault(group_id, []).append(record)
     for group_id, records in groups.items():
         employee_id = records[0].get("employee_id", "")
@@ -290,10 +307,10 @@ def render_duplicate_review(data: Dict[str, Any]):
                 st.markdown(f'<div class="record-id">{record.get("record_id", "")}</div>', unsafe_allow_html=True)
                 for field in ["employee_id", "name", "email", "joining_date", "department"]:
                     st.write(f"**{field.replace('_', ' ').title()}**  {record.get(field, '')}")
-                retry_completed = record.get("record_id") in st.session_state.get("retry_completed_ids", set())
                 if record.get("duplicate_retry_required"):
+                    retry_completed = record.get("record_id") in st.session_state.get("retry_completed_ids", set())
                     if st.button(
-                        "Retry completed" if retry_completed else "Retry kept record",
+                        "Retry completed" if retry_completed else "Retry",
                         key=f"retry_duplicate_{record.get('record_id')}",
                         type="primary",
                         disabled=retry_completed
@@ -335,22 +352,29 @@ def render_human_review(data: Dict[str, Any]):
             issues = record.get("validation_issues", [])
             st.markdown(f'<div class="state blocked"><strong>Reason for escalation</strong><br>{"<br>".join(issues) or "Target conflict"}</div>', unsafe_allow_html=True)
             st.write(f"Employee ID: {record.get('employee_id', '')} | Name: {record.get('name', '')} | Email: {record.get('email', '')}")
-            st.caption("Edit the fields below, then Retry. Approval is never granted directly from the form.")
-            with st.form(f"edit_{record_id}"):
-                values = {}
-                fields = ["employee_id", "name", "email", "joining_date", "department", "phone", "salary", "location"]
-                edit_columns = st.columns(2)
-                for field_index, field in enumerate(fields):
-                    with edit_columns[field_index % 2]:
-                        values[field] = st.text_input(field.replace("_", " ").title(), value=str(record.get(field, "")))
-                retry_completed = record_id in st.session_state.get("retry_completed_ids", set())
-                submitted = st.form_submit_button(
-                    "Retry completed" if retry_completed else "Retry validation",
-                    type="primary",
-                    disabled=retry_completed
+            if st.button("Edit", key=f"edit_{record_id}", type="primary"):
+                st.session_state[f"editing_{record_id}"] = True
+            if st.session_state.get(f"editing_{record_id}", False):
+                render_edit_form(data, record, record_id)
+
+
+def render_edit_form(data: Dict[str, Any], record: Dict[str, Any], form_key: str):
+    record_id = record.get("record_id", form_key)
+    st.caption("Correct the fields, then Retry validation. The record remains Human Review until it passes again.")
+    with st.form(f"edit_form_{form_key}"):
+        values = {}
+        fields = ["employee_id", "name", "email", "joining_date", "department", "phone", "salary", "location"]
+        edit_columns = st.columns(2)
+        for field_index, field in enumerate(fields):
+            with edit_columns[field_index % 2]:
+                values[field] = st.text_input(
+                    field.replace("_", " ").title(),
+                    value=str(record.get(field, "")),
+                    key=f"{form_key}_{field}"
                 )
-            if submitted:
-                retry_record(data, record, values)
+        submitted = st.form_submit_button("Retry validation", type="primary")
+    if submitted:
+        retry_record(data, record, values)
 
 
 def render_audit(data: Dict[str, Any]):

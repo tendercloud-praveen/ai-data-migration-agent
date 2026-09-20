@@ -48,6 +48,8 @@ Edit and Retry
 
 Records below 100% confidence are not migrated. They remain in Human Review until the user corrects them and Retry validates them successfully.
 
+When multiple uploaded files contain the same employee ID, the backend reconciles complementary fields conservatively. A blank field can be filled from another matching source row only when the available nonblank values agree. Conflicting values are never chosen automatically; the record remains available for Human Review.
+
 ## Human Review
 
 Human Review is used for:
@@ -172,6 +174,16 @@ From the project root:
 pip install -r requirements.txt
 ```
 
+## Tests
+
+Run the backend workflow tests from the project root:
+
+```powershell
+python -m unittest discover -s backend\tests -v
+```
+
+The tests cover conservative multi-file reconciliation, duplicate grouping, target employee conflicts, and escalation after repeated failed Retry attempts.
+
 ## Run the Application
 
 Open two terminals.
@@ -210,3 +222,7 @@ The Streamlit UI runs at `http://localhost:8501`.
 - Duplicate decisions are made by a human.
 - Validation runs again after every edit and Retry.
 - Errors and escalations remain visible in the Audit workspace.
+
+## Autonomy Boundary
+
+The agent acts without human confirmation when the mapping is usable, required fields validate, confidence reaches 100%, and the employee ID does not already exist in the target system. It escalates when duplicate rows conflict, required data is invalid, a target ID already exists, or repeated Retry attempts do not resolve the issue. This keeps routine migration autonomous while preventing silent data loss or target overwrites.

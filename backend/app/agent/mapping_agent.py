@@ -6,9 +6,6 @@ from typing import TypedDict, List, Dict, Any
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, START, END
 from langchain_groq import ChatGroq
-
-
-# Load .env
 BASE_DIR = Path(__file__).resolve().parents[3]
 load_dotenv(BASE_DIR / ".env")
 
@@ -19,9 +16,6 @@ if not GROQ_API_KEY:
     raise RuntimeError(
         "GROQ_API_KEY is missing. Please add it to the .env file."
     )
-
-
-# NEW SYSTEM TARGET COLUMNS
 TARGET_COLUMNS = [
     "employee_id",
     "name",
@@ -38,17 +32,11 @@ class MappingState(TypedDict):
     source_columns: List[str]
     target_columns: List[str]
     mappings: List[Dict[str, Any]]
-
-
-# Groq LLM
 llm = ChatGroq(
     model="openai/gpt-oss-20b",
     temperature=0,
     api_key=GROQ_API_KEY
 )
-
-
-# LangGraph node
 def mapping_agent(state: MappingState):
 
     source_columns = state["source_columns"]
@@ -107,8 +95,6 @@ TARGET COLUMNS:
     response = llm.invoke(prompt)
 
     content = response.content.strip()
-
-    # Remove markdown if the model returns it
     content = content.replace("```json", "")
     content = content.replace("```", "")
     content = content.strip()
@@ -122,9 +108,6 @@ TARGET COLUMNS:
     return {
         "mappings": mappings
     }
-
-
-# Create LangGraph
 graph = StateGraph(MappingState)
 
 graph.add_node(

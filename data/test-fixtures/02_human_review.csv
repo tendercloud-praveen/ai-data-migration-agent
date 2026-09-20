@@ -1,0 +1,3 @@
+Emp ID,Employee Name,Email Address,Joining Date,Dept,Phone Number,Salary,City
+203,,sarah.wilson@example.com,2024-03-20,HR,9000000003,58000,Bangalore
+204,Michael Lee,michael.lee@example.com,invalid-date,Sales,9000000004,57000,Mumbai

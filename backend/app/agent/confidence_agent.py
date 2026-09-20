@@ -22,8 +22,6 @@ def calculate_confidence(state: ConfidenceState):
         )
 
         issue_count = len(issues)
-
-        # Calculate score based on actual issues
         if issue_count == 0:
 
             confidence = 100
@@ -42,8 +40,6 @@ def calculate_confidence(state: ConfidenceState):
                 20,
                 100 - (issue_count * 20)
             )
-
-        # Decide next action
         if confidence >= 95:
 
             status = "SYSTEM_APPROVED"
@@ -65,9 +61,6 @@ def calculate_confidence(state: ConfidenceState):
     return {
         "scored_records": scored_records
     }
-
-
-# LangGraph
 graph = StateGraph(
     ConfidenceState
 )

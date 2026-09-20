@@ -30,24 +30,6 @@ REVIEW_FILE = RESULTS_DIR / "migration_review.json"
 TARGET_FILE = RESULTS_DIR / "target_employees.json"
 MAX_RETRY_ATTEMPTS = 2
 
-if not TARGET_FILE.exists():
-    with open(TARGET_FILE, "w", encoding="utf-8") as f:
-        json.dump({
-            "employees": [
-                {
-                    "employee_id": "102",
-                    "name": "Existing Target Employee",
-                    "email": "existing@example.com",
-                    "joining_date": "01/01/2025",
-                    "department": "Operations",
-                    "phone": "",
-                    "salary": "",
-                    "location": ""
-                }
-            ]
-        }, f, indent=4)
-
-
 def read_results():
     source_file = REVIEW_FILE if REVIEW_FILE.exists() else RESULTS_FILE
     if not source_file.exists() or source_file.stat().st_size == 0:
@@ -243,6 +225,44 @@ def add_duplicate_metadata(records):
             record["duplicate_status"] = "PENDING_REVIEW" if len(group) > 1 else None
 
 
+def reconcile_records(records):
+    """Fill missing fields from matching source rows without hiding conflicts."""
+    by_employee_id = {}
+    for record in records:
+        employee_id = str(record.get("employee_id", "")).strip()
+        if employee_id:
+            by_employee_id.setdefault(employee_id, []).append(record)
+
+    merge_fields = [
+        "name",
+        "email",
+        "joining_date",
+        "department",
+        "phone",
+        "salary",
+        "location"
+    ]
+
+    for employee_id, matching_records in by_employee_id.items():
+        if len(matching_records) < 2:
+            continue
+
+        for field in merge_fields:
+            values = {
+                str(record.get(field, "")).strip()
+                for record in matching_records
+                if str(record.get(field, "")).strip()
+            }
+
+            if len(values) != 1:
+                continue
+
+            shared_value = next(iter(values))
+            for record in matching_records:
+                if not str(record.get(field, "")).strip():
+                    record[field] = shared_value
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -264,17 +284,23 @@ async def reset_results():
 async def upload_files(files: List[UploadFile] = File(...)):
     results = []
     for file in files:
-        filename = file.filename
+        filename = Path(file.filename or "uploaded_file.csv").name
         extension = Path(filename).suffix.lower()
         if extension not in [".csv", ".xlsx"]:
             raise HTTPException(status_code=400, detail=f"Unsupported file type: {filename}")
-        content = await file.read()
-        with open(UPLOAD_DIR / filename, "wb") as f:
-            f.write(content)
-        if extension == ".csv":
-            df = pd.read_csv(BytesIO(content))
-        else:
-            df = pd.read_excel(BytesIO(content), engine="openpyxl")
+        try:
+            content = await file.read()
+            with open(UPLOAD_DIR / filename, "wb") as f:
+                f.write(content)
+            if extension == ".csv":
+                df = pd.read_csv(BytesIO(content))
+            else:
+                df = pd.read_excel(BytesIO(content), engine="openpyxl")
+        except (OSError, ValueError, pd.errors.ParserError) as error:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not read {filename}: {error}"
+            ) from error
         results.append({
             "file_name": filename,
             "file_type": extension,
@@ -282,11 +308,6 @@ async def upload_files(files: List[UploadFile] = File(...)):
             "columns": [str(column) for column in df.columns]
         })
     return {"status": "success", "message": "Files uploaded successfully", "files": results}
-
-
-# =========================================================
-# STEP 3 - AI MAPPING
-# =========================================================
 
 @app.post("/analyze-mapping")
 async def analyze_mapping(
@@ -371,12 +392,6 @@ async def analyze_mapping(
             all_results
     }
 
-
-# =========================================================
-# STEP 4 + STEP 5
-# MAPPING → CLEANING → VALIDATION → CONFIDENCE
-# =========================================================
-
 @app.post("/validate-data")
 async def validate_data(files: List[UploadFile] = File(...)):
     all_records = []
@@ -426,6 +441,7 @@ async def validate_data(files: List[UploadFile] = File(...)):
             all_records.append(target_record)
         file_records.append((filename, mappings, records))
 
+    reconcile_records(all_records)
     add_duplicate_metadata(all_records)
     revalidate_records(all_records)
     all_results = [
@@ -484,10 +500,6 @@ async def legacy_validate_data(
 
         content = await file.read()
 
-        # -----------------------------------------
-        # Read source file
-        # -----------------------------------------
-
         if extension == ".csv":
 
             df = pd.read_csv(
@@ -501,18 +513,10 @@ async def legacy_validate_data(
                 engine="openpyxl"
             )
 
-        # -----------------------------------------
-        # Source columns
-        # -----------------------------------------
-
         source_columns = [
             str(column)
             for column in df.columns
         ]
-
-        # -----------------------------------------
-        # AI Mapping
-        # -----------------------------------------
 
         mapping_result = mapping_graph.invoke({
 
@@ -530,10 +534,6 @@ async def legacy_validate_data(
         mappings = mapping_result[
             "mappings"
         ]
-
-        # -----------------------------------------
-        # Convert source → target
-        # -----------------------------------------
 
         target_records = []
 
@@ -567,10 +567,6 @@ async def legacy_validate_data(
                 target_record
             )
 
-        # -----------------------------------------
-        # Cleaning + Validation
-        # -----------------------------------------
-
         validation_result = (
             validation_graph.invoke({
 
@@ -588,10 +584,6 @@ async def legacy_validate_data(
                 "validated_records"
             ]
         )
-
-        # -----------------------------------------
-        # Confidence
-        # -----------------------------------------
 
         confidence_result = (
             confidence_graph.invoke({
@@ -624,10 +616,6 @@ async def legacy_validate_data(
 
         })
 
-    # =====================================================
-    # SAVE RESULTS
-    # =====================================================
-
     final_results = {
 
         "status":
@@ -656,11 +644,6 @@ async def legacy_validate_data(
 
     return final_results
 
-
-# =========================================================
-# STEP 6 - HUMAN REVIEW + RETRY
-# =========================================================
-
 @app.post("/retry-record")
 async def retry_record(
     record: Dict[str, Any]
@@ -683,13 +666,7 @@ async def retry_record(
         raise HTTPException(status_code=404, detail="Record not found")
 
     retry_attempts = int(target_record.get("migration_attempts", 0) or 0) + 1
-    if retry_attempts > MAX_RETRY_ATTEMPTS:
-        target_record["escalation_status"] = "ESCALATED"
-        save_results(results_data)
-        raise HTTPException(
-            status_code=409,
-            detail="Record reached the maximum retry limit and requires escalation"
-        )
+    retry_escalated = retry_attempts > MAX_RETRY_ATTEMPTS
 
     preserved = {
         key: target_record.get(key)
@@ -703,6 +680,8 @@ async def retry_record(
     target_record["migration_attempts"] = retry_attempts
     target_record["duplicate_retry_required"] = False
     target_record["human_review_status"] = "RESOLVED"
+    if retry_escalated:
+        target_record["escalation_status"] = "ESCALATED"
     revalidate_records(all_records)
     if target_record.get("confidence_status") != "SYSTEM_APPROVED" and retry_attempts >= MAX_RETRY_ATTEMPTS:
         target_record["escalation_status"] = "ESCALATED"
@@ -801,9 +780,6 @@ async def resolve_duplicate(payload: Dict[str, Any]):
     }
 
 
-# =========================================================
-# STEP 7 - MOCK TARGET API
-# =========================================================
 
 @app.get("/target/employees")
 async def list_target_employees():
@@ -846,10 +822,6 @@ async def create_target_employee(
         )
     ).strip()
 
-    # -----------------------------------------
-    # Employee ID is required
-    # -----------------------------------------
-
     if not employee_id:
 
         raise HTTPException(
@@ -857,20 +829,12 @@ async def create_target_employee(
             detail="Employee ID is required"
         )
 
-    # -----------------------------------------
-    # Read target system
-    # -----------------------------------------
-
     target_data = read_target_data()
 
     employees = target_data.get(
         "employees",
         []
     )
-
-    # -----------------------------------------
-    # Check duplicate in target system
-    # -----------------------------------------
 
     for existing_employee in employees:
 
@@ -891,10 +855,6 @@ async def create_target_employee(
                 )
             )
 
-    # -----------------------------------------
-    # Add employee
-    # -----------------------------------------
-
     employee_to_store = {
         key: employee.get(key, "")
         for key in [
@@ -914,10 +874,6 @@ async def create_target_employee(
     )
 
     target_data["employees"] = employees
-
-    # -----------------------------------------
-    # Save target system
-    # -----------------------------------------
 
     with open(
         TARGET_FILE,
@@ -945,17 +901,8 @@ async def create_target_employee(
 
     }
 
-
-# =========================================================
-# STEP 7 - MIGRATE APPROVED RECORDS
-# =========================================================
-
 @app.post("/migrate")
 async def migrate_records():
-
-    # -----------------------------------------
-    # Check migration results
-    # -----------------------------------------
 
     if not RESULTS_FILE.exists():
 
@@ -963,10 +910,6 @@ async def migrate_records():
             status_code=404,
             detail="No migration results found. Run AI analysis first."
         )
-
-    # -----------------------------------------
-    # Read results
-    # -----------------------------------------
 
     with open(
         RESULTS_FILE,
@@ -977,10 +920,6 @@ async def migrate_records():
         results_data = json.load(f)
 
     migration_summary = []
-
-    # -----------------------------------------
-    # Process every file
-    # -----------------------------------------
 
     for file_data in results_data.get(
         "files",
@@ -995,10 +934,6 @@ async def migrate_records():
             "records",
             []
         )
-
-        # -----------------------------------------
-        # Process every record
-        # -----------------------------------------
 
         for index, record in enumerate(
             records
@@ -1019,10 +954,6 @@ async def migrate_records():
                 "confidence_status",
                 "HUMAN_REVIEW"
             )
-
-            # ---------------------------------
-            # Only approved records migrate
-            # ---------------------------------
 
             if confidence_status != "SYSTEM_APPROVED":
 
@@ -1053,10 +984,6 @@ async def migrate_records():
 
                 continue
 
-            # ---------------------------------
-            # Already migrated
-            # ---------------------------------
-
             if record.get(
                 "migration_status"
             ) == "MIGRATED":
@@ -1081,10 +1008,6 @@ async def migrate_records():
 
                 continue
 
-            # ---------------------------------
-            # Migration attempt
-            # ---------------------------------
-
             attempts = record.get(
                 "migration_attempts",
                 0
@@ -1097,10 +1020,6 @@ async def migrate_records():
             ] = attempts
 
             try:
-
-                # ---------------------------------
-                # Store in mock target system
-                # ---------------------------------
 
                 target_response = (
                     await create_target_employee(
@@ -1205,10 +1124,6 @@ async def migrate_records():
 
                 })
 
-    # -----------------------------------------
-    # Save migration results
-    # -----------------------------------------
-
     with open(
         RESULTS_FILE,
         "w",
@@ -1221,10 +1136,6 @@ async def migrate_records():
             indent=4,
             default=str
         )
-
-    # -----------------------------------------
-    # Summary
-    # -----------------------------------------
 
     successful = sum(
         1

@@ -30,3 +30,14 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Test and coverage artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+coverage.xml
+
+# Build artifacts
+*.egg-info/
+dist/
+build/

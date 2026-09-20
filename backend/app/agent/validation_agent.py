@@ -64,10 +64,6 @@ def clean_and_validate(state: ValidationState):
 
     employee_ids = {}
 
-    # ---------------------------------------------
-    # Find duplicate employee IDs
-    # ---------------------------------------------
-
     for record in records:
 
         employee_id = clean_value(
@@ -90,15 +86,9 @@ def clean_and_validate(state: ValidationState):
                 ) + 1
             )
 
-    # ---------------------------------------------
-    # Clean and validate every record
-    # ---------------------------------------------
-
     for record in records:
 
         cleaned = {}
-
-        # Clean values
         for key, value in record.items():
 
             value = clean_value(value)
@@ -110,10 +100,6 @@ def clean_and_validate(state: ValidationState):
             cleaned[key] = value
 
         issues = []
-
-        # -----------------------------------------
-        # Employee ID
-        # -----------------------------------------
 
         employee_id = str(
             cleaned.get(
@@ -137,10 +123,6 @@ def clean_and_validate(state: ValidationState):
                 "Duplicate Employee ID"
             )
 
-        # -----------------------------------------
-        # Employee Name
-        # -----------------------------------------
-
         name = str(
             cleaned.get(
                 "name",
@@ -153,10 +135,6 @@ def clean_and_validate(state: ValidationState):
             issues.append(
                 "Missing Employee Name"
             )
-
-        # -----------------------------------------
-        # Email
-        # -----------------------------------------
 
         email = str(
             cleaned.get(
@@ -186,10 +164,6 @@ def clean_and_validate(state: ValidationState):
                     "Invalid Email"
                 )
 
-        # -----------------------------------------
-        # Joining Date
-        # -----------------------------------------
-
         joining_date = clean_value(
             cleaned.get(
                 "joining_date",
@@ -215,10 +189,6 @@ def clean_and_validate(state: ValidationState):
                 "Invalid Joining Date"
             )
 
-        # -----------------------------------------
-        # Department
-        # -----------------------------------------
-
         department = str(
             cleaned.get(
                 "department",
@@ -231,10 +201,6 @@ def clean_and_validate(state: ValidationState):
             issues.append(
                 "Missing Department"
             )
-
-        # -----------------------------------------
-        # Final validation status
-        # -----------------------------------------
 
         if len(issues) == 0:
 
@@ -259,11 +225,6 @@ def clean_and_validate(state: ValidationState):
     return {
         "validated_records": validated_records
     }
-
-
-# =================================================
-# LANGGRAPH VALIDATION AGENT
-# =================================================
 
 graph = StateGraph(
     ValidationState
