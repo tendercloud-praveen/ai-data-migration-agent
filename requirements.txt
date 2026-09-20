@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+streamlit
+pandas
+openpyxl
+pydantic
+python-multipart
+requests
+langgraph
+langchain
+langchain-ollama

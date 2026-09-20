@@ -1,0 +1,174 @@
+{
+    "status": "success",
+    "message": "AI mapping, cleaning, validation and confidence scoring completed",
+    "files": [
+        {
+            "file_name": "employee_details.csv",
+            "mappings": [
+                {
+                    "source_column": "Employee ID",
+                    "target_column": "employee_id",
+                    "confidence": 99,
+                    "reason": "Employee ID is the unique identifier for an employee, matching the target field employee_id."
+                },
+                {
+                    "source_column": "Name",
+                    "target_column": "name",
+                    "confidence": 99,
+                    "reason": "Name directly corresponds to the employee's full name, which maps to the target field name."
+                },
+                {
+                    "source_column": "Email",
+                    "target_column": "email",
+                    "confidence": 99,
+                    "reason": "Email is the employee's contact email, matching the target field email."
+                },
+                {
+                    "source_column": "DOJ",
+                    "target_column": "joining_date",
+                    "confidence": 99,
+                    "reason": "DOJ (Date of Joining) represents the employee's start date, aligning with the target field joining_date."
+                },
+                {
+                    "source_column": "Department",
+                    "target_column": "department",
+                    "confidence": 99,
+                    "reason": "Department indicates the employee's organizational unit, which maps to the target field department."
+                }
+            ],
+            "records": [
+                {
+                    "record_id": "employee_details.csv:2",
+                    "migration_status": "PENDING",
+                    "employee_id": 101,
+                    "name": "Praveen Kumar",
+                    "email": "praveen@gmail.com",
+                    "joining_date": "01/04/2026",
+                    "department": "Engineering",
+                    "phone": "",
+                    "salary": "",
+                    "location": "",
+                    "migration_attempts": 0,
+                    "migration_error": "",
+                    "duplicate_group_id": "",
+                    "duplicate_status": "",
+                    "validation_status": "VALID",
+                    "validation_issues": [],
+                    "confidence_score": 100,
+                    "confidence_status": "SYSTEM_APPROVED"
+                },
+                {
+                    "record_id": "employee_details.csv:3",
+                    "migration_status": "REMOVED",
+                    "employee_id": 102,
+                    "name": "John Smith",
+                    "email": "john@gmail.com",
+                    "joining_date": "15-May-2026",
+                    "department": "Sales",
+                    "phone": "",
+                    "salary": "",
+                    "location": "",
+                    "migration_attempts": 0,
+                    "migration_error": "",
+                    "duplicate_group_id": "DUP-102",
+                    "duplicate_status": "REMOVED",
+                    "validation_status": "INVALID",
+                    "validation_issues": [
+                        "Duplicate record removed"
+                    ],
+                    "confidence_score": 80,
+                    "confidence_status": "HUMAN_REVIEW",
+                    "duplicate_resolution_reason": "Duplicate resolution",
+                    "resolved_by": "Human",
+                    "resolved_at": "2026-09-20T16:30:05.887948"
+                },
+                {
+                    "record_id": "employee_details.csv:4",
+                    "migration_status": "PENDING",
+                    "employee_id": 103,
+                    "name": "Sarah Wilson",
+                    "email": "sarah@gmail",
+                    "joining_date": "2026-06-10",
+                    "department": "HR",
+                    "phone": "",
+                    "salary": "",
+                    "location": "",
+                    "migration_attempts": 0,
+                    "migration_error": "",
+                    "duplicate_group_id": "",
+                    "duplicate_status": "",
+                    "validation_status": "INVALID",
+                    "validation_issues": [
+                        "Invalid Email"
+                    ],
+                    "confidence_score": 80,
+                    "confidence_status": "HUMAN_REVIEW"
+                },
+                {
+                    "record_id": "employee_details.csv:5",
+                    "migration_status": "PENDING",
+                    "employee_id": 104,
+                    "name": "",
+                    "email": "david@gmail.com",
+                    "joining_date": "20/06/2026",
+                    "department": "Finance",
+                    "phone": "",
+                    "salary": "",
+                    "location": "",
+                    "migration_attempts": 0,
+                    "migration_error": "",
+                    "duplicate_group_id": "",
+                    "duplicate_status": "",
+                    "validation_status": "INVALID",
+                    "validation_issues": [
+                        "Missing Employee Name"
+                    ],
+                    "confidence_score": 80,
+                    "confidence_status": "HUMAN_REVIEW"
+                },
+                {
+                    "record_id": "employee_details.csv:6",
+                    "employee_id": "105",
+                    "name": "Alex Johnson",
+                    "email": "alex@gmail.com",
+                    "joining_date": "12-24-2003",
+                    "department": "Engineering",
+                    "phone": "",
+                    "salary": "",
+                    "location": "",
+                    "duplicate_group_id": "",
+                    "duplicate_status": "",
+                    "migration_attempts": 0,
+                    "migration_status": "PENDING",
+                    "migration_error": "",
+                    "validation_status": "INVALID",
+                    "validation_issues": [
+                        "Invalid Joining Date"
+                    ],
+                    "confidence_score": 80,
+                    "confidence_status": "HUMAN_REVIEW"
+                },
+                {
+                    "record_id": "employee_details.csv:7",
+                    "migration_status": "PENDING",
+                    "employee_id": 102,
+                    "name": "John Smith",
+                    "email": "john@gmail.com",
+                    "joining_date": "15-May-2026",
+                    "department": "Sales",
+                    "phone": "",
+                    "salary": "",
+                    "location": "",
+                    "migration_attempts": 0,
+                    "migration_error": "",
+                    "duplicate_group_id": "DUP-102",
+                    "duplicate_status": "KEPT",
+                    "validation_status": "VALID",
+                    "validation_issues": [],
+                    "confidence_score": 100,
+                    "confidence_status": "SYSTEM_APPROVED"
+                }
+            ]
+        }
+    ]
+}
