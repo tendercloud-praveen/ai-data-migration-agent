@@ -137,13 +137,15 @@ The mock target system. It contains only clean employee objects, not validation 
 
 ## Refresh Behavior
 
-Starting a new Streamlit session clears the current run data:
+Starting a new Streamlit session clears the current migration run data:
 
 - `migration_results.json` is removed.
 - `migration_review.json` is removed.
-- `target_employees.json` is reset to `{ "employees": [] }`.
+- `target_employees.json` is preserved, so migrated employees remain available after refresh.
 
 Uploaded source files are not modified.
+
+The Streamlit sidebar has a `Rollback` page below `Audit`. It lists uploaded employees that already exist in the target system. The `Delete` action hides the selected row from the current frontend session; it does not modify `target_employees.json`.
 
 ## Technology
 

@@ -29,6 +29,7 @@ RESULTS_FILE = RESULTS_DIR / "migration_results.json"
 REVIEW_FILE = RESULTS_DIR / "migration_review.json"
 TARGET_FILE = RESULTS_DIR / "target_employees.json"
 MAX_RETRY_ATTEMPTS = 2
+REFRESH_TARGET_EMPLOYEE_IDS = {"500", "502"}
 
 def read_results():
     source_file = REVIEW_FILE if REVIEW_FILE.exists() else RESULTS_FILE
@@ -274,10 +275,19 @@ async def reset_results():
         if result_file.exists():
             result_file.unlink()
 
+    target_data = read_target_data()
+    target_data["employees"] = [
+        employee
+        for employee in target_data.get("employees", [])
+        if str(employee.get("employee_id", "")).strip() in REFRESH_TARGET_EMPLOYEE_IDS
+    ]
     with open(TARGET_FILE, "w", encoding="utf-8") as f:
-        json.dump({"employees": []}, f, indent=4)
+        json.dump(target_data, f, indent=4, default=str)
 
-    return {"status": "success", "message": "Migration and target data cleared"}
+    return {
+        "status": "success",
+        "message": "Migration run data cleared; only target employees 500 and 502 preserved"
+    }
 
 
 @app.post("/upload")

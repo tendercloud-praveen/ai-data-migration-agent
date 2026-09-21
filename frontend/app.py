@@ -87,17 +87,74 @@ def set_record(data, record_id, updated_record):
                 return
 
 
+def render_rollback(data: Dict[str, Any]):
+    st.markdown(
+        '<div class="upload-card"><div class="eyebrow">Target system</div>'
+        '<h2>Rollback migrated employees</h2>'
+        '<p class="muted">Employees found in the target system after the current upload is processed.</p></div>',
+        unsafe_allow_html=True
+    )
+    if not st.session_state.get("upload_processed", False):
+        st.info("No upload has been processed yet. Target matches will appear here after analysis.")
+        return
+
+    existing_target_ids = {
+        str(record.get("employee_id", "")).strip()
+        for record in all_records(data)
+        if str(record.get("employee_id", "")).strip()
+        and "Employee ID already exists in target system" in record.get("validation_issues", [])
+    }
+    hidden_rollback_ids = st.session_state.setdefault("hidden_rollback_ids", set())
+    st.subheader("Target employees")
+    try:
+        response = api_request("GET", "/target/employees", timeout=15)
+        response.raise_for_status()
+        employees = response.json().get("employees", [])
+    except requests.RequestException:
+        st.warning("Target system is unavailable.")
+        return
+
+    employees = [
+        employee
+        for employee in employees
+        if (
+            str(employee.get("employee_id", "")).strip() in existing_target_ids
+            and str(employee.get("employee_id", "")).strip() not in hidden_rollback_ids
+        )
+    ]
+    if not employees:
+        st.info("No uploaded duplicate employee exists in the target system.")
+        return
+
+    st.caption(f"{len(employees)} uploaded duplicate employee(s) already exist in the target system.")
+    for employee in employees:
+        employee_id = employee.get("employee_id", "")
+        left, right = st.columns([8, 1])
+        with left:
+            st.markdown(
+                f'<div class="state"><strong>ID {employee_id}</strong> &nbsp; '
+                f'{employee.get("name", "")} &nbsp; '
+                '<span class="muted">Already exists in target system</span></div>',
+                unsafe_allow_html=True
+            )
+        with right:
+            if st.button("Delete", key=f"rollback_delete_{employee_id}"):
+                hidden_rollback_ids.add(str(employee_id).strip())
+                st.rerun()
+
+
 def render_sidebar(active_view: str):
     st.sidebar.markdown('<div class="brand">Migrate / AI</div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="brand-sub">Client migration control room</div>', unsafe_allow_html=True)
     st.sidebar.markdown("### Workspace")
-    return st.sidebar.radio(
+    selected_view = st.sidebar.radio(
         "Navigation",
-        ["Upload Files", "Dashboard", "Human Review", "Audit"],
-        index=["Upload Files", "Dashboard", "Human Review", "Audit"].index(active_view),
+        ["Upload Files", "Dashboard", "Human Review", "Audit", "Rollback"],
+        index=["Upload Files", "Dashboard", "Human Review", "Audit", "Rollback"].index(active_view),
         label_visibility="collapsed",
         key="workspace_navigation"
     )
+    return selected_view
 
 
 def render_topbar(active_view: str):
@@ -115,6 +172,8 @@ def render_upload():
         if st.button("Go to Dashboard", type="primary"):
             st.session_state["active_view"] = "Dashboard"
             st.rerun()
+
+    render_existing_target_matches(st.session_state.get("validation_data", empty_results()))
 
     st.markdown(
         '<div class="upload-card"><div class="eyebrow">Step 01 / Ingest</div>'
@@ -150,10 +209,48 @@ def render_upload():
         st.session_state["upload_data"] = upload_response.json()
         st.session_state["mapping_data"] = mapping_response.json()
         st.session_state["validation_data"] = validation_response.json()
+        st.session_state["upload_processed"] = True
         st.session_state["analysis_complete_notice"] = True
         st.rerun()
     except requests.RequestException as error:
         st.error(f"The migration service could not complete the run: {error}")
+
+
+def render_existing_target_matches(data: Dict[str, Any]):
+    uploaded_records = [
+        record
+        for record in all_records(data)
+        if "Employee ID already exists in target system" in record.get("validation_issues", [])
+    ]
+    if not uploaded_records:
+        return
+
+    try:
+        response = api_request("GET", "/target/employees", timeout=15)
+        response.raise_for_status()
+        target_by_id = {
+            str(employee.get("employee_id", "")).strip(): employee
+            for employee in response.json().get("employees", [])
+        }
+    except requests.RequestException:
+        st.warning("An uploaded employee matches a target record, but the target details are unavailable.")
+        return
+
+    st.warning(
+        f"{len(uploaded_records)} uploaded record(s) already exist in the target system. "
+        "They will not be saved again."
+    )
+    for record in uploaded_records:
+        employee_id = str(record.get("employee_id", "")).strip()
+        target_employee = target_by_id.get(employee_id, {})
+        st.markdown(
+            f'<div class="state blocked"><strong>Already exists: Employee ID {employee_id}</strong><br>'
+            f'Uploaded: {record.get("name", "")} · {record.get("email", "")} · '
+            f'{record.get("department", "")} · {record.get("location", "")}<br>'
+            f'Target: {target_employee.get("name", "")} · {target_employee.get("email", "")} · '
+            f'{target_employee.get("department", "")} · {target_employee.get("location", "")}</div>',
+            unsafe_allow_html=True
+        )
 
 
 def render_target_employees():
@@ -310,7 +407,7 @@ def render_duplicate_review(data: Dict[str, Any]):
                 if record.get("duplicate_retry_required"):
                     retry_completed = record.get("record_id") in st.session_state.get("retry_completed_ids", set())
                     if st.button(
-                        "Retry completed" if retry_completed else "Retry",
+                        "Approved" if retry_completed else "Retry",
                         key=f"retry_duplicate_{record.get('record_id')}",
                         type="primary",
                         disabled=retry_completed
@@ -326,7 +423,7 @@ def render_human_review(data: Dict[str, Any]):
     if last_retry:
         if last_retry["status"] == "SYSTEM_APPROVED" and last_retry["score"] == 100:
             st.markdown(
-                f'<div class="state good"><strong>Retry completed: {last_retry["record_id"]}</strong><br>'
+                f'<div class="state good"><strong>Approved: {last_retry["record_id"]}</strong><br>'
                 '<strong>Confidence: 100%</strong> · System Approved · '
                 '<strong>Saved to target_employees.json</strong> · Target status: MIGRATED.</div>',
                 unsafe_allow_html=True
@@ -360,7 +457,7 @@ def render_human_review(data: Dict[str, Any]):
 
 def render_edit_form(data: Dict[str, Any], record: Dict[str, Any], form_key: str):
     record_id = record.get("record_id", form_key)
-    st.caption("Correct the fields, then Retry validation. The record remains Human Review until it passes again.")
+    st.caption("Correct the fields, then click Retry. The record remains Human Review until it passes again.")
     with st.form(f"edit_form_{form_key}"):
         values = {}
         fields = ["employee_id", "name", "email", "joining_date", "department", "phone", "salary", "location"]
@@ -372,7 +469,7 @@ def render_edit_form(data: Dict[str, Any], record: Dict[str, Any], form_key: str
                     value=str(record.get(field, "")),
                     key=f"{form_key}_{field}"
                 )
-        submitted = st.form_submit_button("Retry validation", type="primary")
+        submitted = st.form_submit_button("Retry", type="primary")
     if submitted:
         retry_record(data, record, values)
 
@@ -410,6 +507,8 @@ if "session_initialized" not in st.session_state:
 
 if "validation_data" not in st.session_state:
     st.session_state["validation_data"] = empty_results()
+if "upload_processed" not in st.session_state:
+    st.session_state["upload_processed"] = False
 
 active_view = render_sidebar(st.session_state.get("active_view", "Upload Files"))
 st.session_state["active_view"] = active_view
@@ -422,5 +521,7 @@ elif active_view == "Dashboard":
     render_dashboard(data)
 elif active_view == "Human Review":
     render_human_review(data)
+elif active_view == "Rollback":
+    render_rollback(data)
 else:
     render_audit(data)
